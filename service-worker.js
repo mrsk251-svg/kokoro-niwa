@@ -4,16 +4,16 @@
  *
  * アプリのファイルを更新したら、下の CACHE の番号を1つ上げてください（v1 → v2）。
  * 次にアプリを2回開いたときに新しい版に切り替わります。 */
-var CACHE = 'kokoro-niwa-app-v1';
+var CACHE = 'kokoro-niwa-app-v2';
 var ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './manifest.json',
-  './icons/icon-180.png',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icon-180.png',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', function (event) {
