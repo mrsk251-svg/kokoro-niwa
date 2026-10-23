@@ -50,10 +50,12 @@ var storageOK = true;
 function blank() {
   return {
     v: 1, records: {},
-    settings: { amount: 1500, goal: '', showStreak: true, sos: DEFAULT_SOS.slice() },
-    names: {}, seen: [], sosCount: 0, lastBackup: null, hideInstall: false
+    settings: { showStreak: true, sos: DEFAULT_SOS.slice() },
+    names: {}, seen: [], sosCount: 0, lastBackup: null, hideInstall: false,
+    expenses: []   // 食費の記録 { id, d:'YYYY-MM-DD', c:'food'|'out', a:金額 }
   };
 }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 // 読み込んだデータ（保存データ・バックアップ）を安全な形にそろえる
 function normalize(d) {
   var b = blank();
@@ -68,8 +70,14 @@ function normalize(d) {
     });
   }
   var s = d.settings || {};
-  if (typeof s.amount === 'number' && isFinite(s.amount) && s.amount >= 0) b.settings.amount = Math.round(s.amount);
-  if (typeof s.goal === 'string') b.settings.goal = s.goal.slice(0, 60);
+  if (Array.isArray(d.expenses)) {
+    b.expenses = d.expenses.filter(function (e) {
+      return e && typeof e.d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.d) && (e.c === 'food' || e.c === 'out') &&
+        typeof e.a === 'number' && isFinite(e.a) && e.a > 0;
+    }).slice(0, 20000).map(function (e) {
+      return { id: String(e.id || uid()).slice(0, 40), d: e.d, c: e.c, a: Math.round(e.a) };
+    });
+  }
   if (typeof s.showStreak === 'boolean') b.settings.showStreak = s.showStreak;
   if (Array.isArray(s.sos)) {
     b.settings.sos = s.sos.filter(function (x) { return typeof x === 'string' && x.trim(); })
@@ -216,14 +224,13 @@ function animalSVG(id, size, locked) {
   }
   return s + '</svg>';
 }
-var BANK_SVG = '<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="20" cy="24" rx="15" ry="11" fill="#F6DCDC"/><rect x="16" y="11" width="8" height="3" rx="1.5" fill="#D9A9AC"/><circle cx="28" cy="22" r="1.6" fill="#3B3A36"/><rect x="10" y="33" width="4" height="4" rx="1" fill="#E7BFC1"/><rect x="26" y="33" width="4" height="4" rx="1" fill="#E7BFC1"/></svg>';
 var SHARE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="共有" role="img" style="vertical-align:-2px"><path d="M12 3 V15 M7 8 L12 3 L17 8 M5 13 V20 H19 V13"/></svg>';
 
 /* ================= 共通の部品 ================= */
 var main = document.getElementById('main'), layer = document.getElementById('layer');
 var tab = 'home', calY, calM, backupSnoozed = false;
 var msg = MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
-(function () { var t = today(); calY = t.getFullYear(); calM = t.getMonth(); })();
+(function () { var t = today(); calY = t.getFullYear(); calM = t.getMonth(); foodY = calY; foodM = calM; })();
 
 var toastTimer;
 function toast(t) {
@@ -249,7 +256,7 @@ function checkCelebrate(before, after) {
   BADGES.forEach(function (b) { if (before < b && after >= b && S.seen.indexOf(b) < 0) hit = b; });
   var pb = Math.floor(before / PER_FLOWER), pa = Math.floor(after / PER_FLOWER);
   if (hit) { S.seen.push(hit); save(); celebrate('合計' + hit + '日', '過食しなかった日が、これまでに' + hit + '日になりました。'); }
-  else if (pa > pb) celebrate(FLOWERS[(pa - 1) % FLOWERS.length].name + 'が咲きました', '咲いた花は「育てる」でいつでも見られます。');
+  else if (pa > pb) celebrate(FLOWERS[(pa - 1) % FLOWERS.length].name + 'が咲きました', '咲いた花は「庭・カレンダー」でいつでも見られます。');
 }
 function celebrate(title, body) {
   var wrap = document.createElement('div'); wrap.className = 'celebrate';
@@ -274,7 +281,7 @@ function render() {
   document.querySelectorAll('nav button').forEach(function (b) {
     if (b.dataset.tab === tab) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
-  ({ home: renderHome, cal: renderCal, grow: renderGrow, set: renderSet })[tab]();
+  ({ home: renderHome, garden: renderGarden, food: renderFood, set: renderSet })[tab]();
 }
 
 function noticesHTML() {
@@ -324,12 +331,9 @@ function renderHome() {
       '<button class="b-ok' + (r.s === 'bin' ? ' dim' : '') + '" data-set="ok" aria-pressed="' + (r.s === 'ok') + '">過食なし</button>' +
       '<button class="b-bin' + (r.s === 'ok' ? ' dim' : '') + '" data-set="bin" aria-pressed="' + (r.s === 'bin') + '">過食あり</button></div>' + rec +
       '<label class="check" for="exToday"><input type="checkbox" id="exToday"' + (r.ex ? ' checked' : '') + '>体を動かした（できた日だけでOK）</label></section>' +
-    '<div class="row"><button class="pet plant" data-go="grow">' + plantSVG(p.stage, p.flower, 84) + '<b>' + esc(p.flower.name) + '・' + STAGES[p.stage].n + '</b><span class="tiny">' + stLine + '</span></button>' +
-      '<button class="pet animal" data-go="grow">' + animalSVG(cat.id, 84) + '<b>' + cat.kind + 'の「' + esc(nameOf(cat)) + '」</b><span class="tiny">' + animalAge(lv) + '・Lv.' + lv + '</span></button></div>' +
-    '<section class="card bank" aria-label="使わずに済んだお金">' + BANK_SVG +
-      '<div style="flex:1;min-width:0"><div class="tiny">使わずに済んだお金（目安）</div><div class="amt num">' + yen(total * S.settings.amount) + '</div></div>' +
-      (S.settings.goal ? '<div class="tiny" style="text-align:right;max-width:40%">目標：' + esc(S.settings.goal) + '</div>'
-        : '<button class="tiny" data-go="set" style="background:none;border:none;text-decoration:underline;min-height:44px">目標を決める</button>') + '</section>' +
+    '<button class="pet scene" data-go="garden" aria-label="庭・カレンダーを開く">' + gardenSVG(total, p) +
+      '<b>' + esc(p.flower.name) + '・' + STAGES[p.stage].n + '</b><span class="tiny">' + stLine + '・なかま ' + ANIMALS.filter(function (a) { return animalLevel(a, total) > 0; }).length + '匹</span></button>' +
+    expenseCardHTML(t.getFullYear(), t.getMonth()) +
     '<p class="msg">' + esc(msg) + '</p></div>';
   bindNotices();
   main.querySelectorAll('[data-set]').forEach(function (b) {
@@ -346,9 +350,135 @@ function renderHome() {
     if (e.target.checked) toast('体を動かせた日、ひとつ追加');
   };
   main.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { go(b.dataset.go); }; });
+  document.getElementById('addExpHome').onclick = function () { openExpense(k); };
 }
 
-function renderCal() {
+/* ---------- 食費 ---------- */
+var EXP_LABEL = { food: '食費', out: '外食' };
+function expenseTotals(y, m) {
+  var pre = y + '-' + pad(m + 1) + '-', t = { food: 0, out: 0, all: 0 };
+  S.expenses.forEach(function (e) { if (e.d.indexOf(pre) === 0) { t[e.c] += e.a; t.all += e.a; } });
+  return t;
+}
+function shareBar(t) {
+  if (!t.all) return '<div class="share" aria-hidden="true"></div>';
+  var f = Math.round(t.food / t.all * 100);
+  return '<div class="share" aria-hidden="true"><i style="width:' + f + '%;background:var(--sage-strong)"></i><i style="width:' + (100 - f) + '%;background:var(--lav-mid)"></i></div>';
+}
+function expenseCardHTML(y, m) {
+  var t = expenseTotals(y, m);
+  return '<section class="card" aria-label="今月の食費"><div class="exp-head"><h2>今月の食費</h2><button class="link" data-go="food">くわしく見る</button></div>' +
+    '<div class="exp-total num">' + yen(t.all) + '</div>' +
+    '<div class="exp-split"><span><i class="dot food"></i>食費<b class="num">' + yen(t.food) + '</b></span><span><i class="dot out"></i>外食<b class="num">' + yen(t.out) + '</b></span></div>' +
+    shareBar(t) +
+    '<button class="btn sage" id="addExpHome" style="width:100%;margin-top:14px">食費をつける</button></section>';
+}
+function toHalf(s) { return String(s).replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }); }
+function openExpense(dateKey) {
+  var cat = 'food', tk = key(today());
+  layer.innerHTML = '<div class="scrim" id="scrim"><form class="sheet" id="ef" role="dialog" aria-modal="true" aria-labelledby="eT" novalidate>' +
+    '<h2 id="eT" style="font-size:18px">食費をつける</h2>' +
+    '<div class="seg" role="group" aria-label="種類"><button type="button" data-c="food" aria-pressed="true">食費</button><button type="button" data-c="out" aria-pressed="false">外食</button></div>' +
+    '<p class="note">食費：スーパーやコンビニで買ったもの　外食：お店で食べたもの</p>' +
+    '<label class="f" for="ea">金額（円）<input type="text" id="ea" inputmode="numeric" autocomplete="off" placeholder="例：1200"></label>' +
+    '<label class="f" for="ed">日付<input type="date" id="ed" value="' + dateKey + '" max="' + tk + '"></label>' +
+    '<p class="err" id="eerr" role="alert"></p>' +
+    '<div class="btns"><button type="button" class="btn ghost" id="ec">やめる</button><button type="submit" class="btn sage">記録する</button></div></form></div>';
+  var segs = layer.querySelectorAll('.seg button');
+  segs.forEach(function (b) {
+    b.onclick = function () { cat = b.dataset.c; segs.forEach(function (x) { x.setAttribute('aria-pressed', x === b); }); };
+  });
+  function close() { layer.innerHTML = ''; }
+  document.getElementById('ec').onclick = close;
+  document.getElementById('scrim').onclick = function (e) { if (e.target.id === 'scrim') close(); };
+  document.getElementById('ef').onsubmit = function (e) {
+    e.preventDefault();
+    var err = document.getElementById('eerr');
+    var a = parseInt(toHalf(document.getElementById('ea').value).replace(/[^\d]/g, ''), 10);
+    var d = document.getElementById('ed').value;
+    if (!(a > 0 && a <= 1000000)) { err.textContent = '金額を数字で入れてください（例：1200）'; return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { err.textContent = '日付を選んでください'; return; }
+    if (d > tk) { err.textContent = '未来の日付には記録できません'; return; }
+    S.expenses.push({ id: uid(), d: d, c: cat, a: a });
+    save(); close(); render();
+    toast(EXP_LABEL[cat] + ' ' + yen(a) + ' を記録しました');
+  };
+  document.getElementById('ea').focus();
+}
+
+var foodY, foodM, expDel = null;
+function renderFood() {
+  var t = today(), isCur = foodY === t.getFullYear() && foodM === t.getMonth();
+  var tot = expenseTotals(foodY, foodM), pre = foodY + '-' + pad(foodM + 1) + '-';
+  var list = S.expenses.filter(function (e) { return e.d.indexOf(pre) === 0; })
+    .sort(function (a, b) { return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; });
+  var groups = '', cur = null, rows = '';
+  function flush() { if (cur) groups += '<div class="exp-day"><h3>' + jp(parseKey(cur)) + '</h3>' + rows + '</div>'; }
+  list.forEach(function (e) {
+    if (e.d !== cur) { flush(); cur = e.d; rows = ''; }
+    rows += '<div class="exp-row"><i class="dot ' + e.c + '"></i><span>' + EXP_LABEL[e.c] + '</span><span class="amt num">' + yen(e.a) + '</span>' +
+      (expDel === e.id
+        ? '<button class="btn pink small" data-delx="' + e.id + '">消す</button><button class="btn ghost small" data-keep="1">やめる</button>'
+        : '<button class="x" data-dele="' + e.id + '" aria-label="' + EXP_LABEL[e.c] + ' ' + yen(e.a) + ' を削除">×</button>') + '</div>';
+  });
+  flush();
+  main.innerHTML = '<div class="screen">' +
+    '<div class="cal-head"><button class="round" id="fprev" aria-label="前の月"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M15 5 L8 12 L15 19"/></svg></button>' +
+    '<h1 class="num">' + foodY + '年 ' + (foodM + 1) + '月の食費</h1>' +
+    '<button class="round" id="fnext" aria-label="次の月"' + (isCur ? ' disabled' : '') + '><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 5 L16 12 L9 19"/></svg></button></div>' +
+    '<section class="card"><div class="tiny">合計</div><div class="exp-total num">' + yen(tot.all) + '</div>' + shareBar(tot) +
+      '<div class="row" style="margin-top:14px"><div class="tile" style="background:var(--sage-soft)"><div class="tiny" style="color:var(--sage-ink)"><i class="dot food"></i>食費</div><div class="v num" style="color:var(--sage-ink);font-size:22px">' + yen(tot.food) + '</div></div>' +
+      '<div class="tile" style="background:var(--lav-soft)"><div class="tiny" style="color:var(--lav-ink)"><i class="dot out"></i>外食</div><div class="v num" style="color:var(--lav-ink);font-size:22px">' + yen(tot.out) + '</div></div></div></section>' +
+    '<button class="btn sage" id="addExp">食費をつける</button>' +
+    '<section class="card" style="display:flex;flex-direction:column;gap:14px"><h2>この月の記録</h2>' +
+      (groups || '<p class="note">まだ記録がありません。「食費をつける」から入れてみてください。</p>') + '</section>' +
+    '</div>';
+  document.getElementById('fprev').onclick = function () { foodM--; if (foodM < 0) { foodM = 11; foodY--; } expDel = null; render(); };
+  document.getElementById('fnext').onclick = function () { if (isCur) return; foodM++; if (foodM > 11) { foodM = 0; foodY++; } expDel = null; render(); };
+  document.getElementById('addExp').onclick = function () { openExpense(isCur ? key(t) : key(new Date(foodY, foodM + 1, 0))); };
+  main.querySelectorAll('[data-dele]').forEach(function (b) { b.onclick = function () { expDel = b.dataset.dele; render(); }; });
+  main.querySelectorAll('[data-keep]').forEach(function (b) { b.onclick = function () { expDel = null; render(); }; });
+  main.querySelectorAll('[data-delx]').forEach(function (b) {
+    b.onclick = function () {
+      var id = b.dataset.delx;
+      S.expenses = S.expenses.filter(function (e) { return e.id !== id; });
+      expDel = null; save(); render(); toast('削除しました');
+    };
+  });
+}
+
+/* ---------- 庭とカレンダー ---------- */
+var SPOTS = {
+  cat:     { x: 18,  y: 126, s: 66 },
+  dog:     { x: 252, y: 124, s: 68 },
+  rabbit:  { x: 66,  y: 146, s: 54 },
+  hamster: { x: 222, y: 158, s: 46 }
+};
+var BACK_X = [34, 66, 98, 246, 278, 310, 140, 204, 172];
+function nest(svg, x, y) { return svg.replace('<svg ', '<svg x="' + x + '" y="' + y + '" '); }
+function gardenSVG(total, p) {
+  var friends = ANIMALS.filter(function (a) { return animalLevel(a, total) > 0; });
+  var label = '庭のようす：' + p.flower.name + '（' + STAGES[p.stage].n + '）' +
+    (p.bloomed ? '、咲かせた花' + p.bloomed + '輪' : '') + '、' + friends.map(function (a) { return a.kind + 'の' + nameOf(a); }).join('、');
+  var s = '<svg class="garden" viewBox="0 0 340 210" role="img" aria-label="' + esc(label) + '">';
+  s += '<rect width="340" height="210" rx="22" fill="var(--sky)"/>';
+  s += '<circle cx="292" cy="40" r="17" fill="#F6E3A6" opacity=".85"/>';
+  s += '<g fill="var(--cloud)"><ellipse cx="70" cy="40" rx="24" ry="9"/><ellipse cx="88" cy="34" rx="14" ry="9"/><ellipse cx="196" cy="58" rx="18" ry="6"/></g>';
+  s += '<path d="M0 118 Q90 92 180 112 T340 102 V210 H0Z" fill="var(--hill2)"/>';
+  var n = Math.min(p.full ? p.bloomed - 1 : p.bloomed, BACK_X.length);
+  for (var i = 0; i < n; i++) {
+    var f = FLOWERS[i % FLOWERS.length], x = BACK_X[i], y = 108 + (i % 3) * 4;
+    s += '<path d="M' + x + ' ' + y + ' V' + (y + 22) + '" stroke="#7FA285" stroke-width="2" stroke-linecap="round"/>' + bloomSVG(f, x, y, 6);
+  }
+  s += '<path d="M0 152 Q170 128 340 152 V210 H0Z" fill="var(--hill)"/>';
+  s += nest(plantSVG(p.stage, p.flower, 116), 112, 88);
+  friends.forEach(function (a, i) {
+    var sp = SPOTS[a.id];
+    s += '<g class="bob" style="animation-delay:' + (i * 0.7) + 's">' + nest(animalSVG(a.id, sp.s), sp.x, sp.y) + '</g>';
+  });
+  return s + '</svg>';
+}
+function calendarHTML() {
   var t = today(), first = new Date(calY, calM, 1), days = new Date(calY, calM + 1, 0).getDate();
   var isCur = calY === t.getFullYear() && calM === t.getMonth();
   var cells = '';
@@ -360,19 +490,55 @@ function renderCal() {
     cells += '<button class="' + cls + '" data-k="' + k + '" aria-label="' + lab + '"' + (fut ? ' disabled' : '') + '><span class="num">' + d + '</span>' + (r.ex ? '<span class="ex"></span>' : '') + '</button>';
   }
   var ms = monthStats(calY, calM);
-  main.innerHTML = '<div class="screen">' +
-    '<div class="cal-head"><button class="round" id="prev" aria-label="前の月"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M15 5 L8 12 L15 19"/></svg></button>' +
-    '<h1 class="num">' + calY + '年 ' + (calM + 1) + '月</h1>' +
+  return '<section class="card" style="padding:16px 12px">' +
+    '<div class="cal-head" style="margin-bottom:12px"><button class="round" id="prev" aria-label="前の月"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M15 5 L8 12 L15 19"/></svg></button>' +
+    '<h2 class="num" style="font-size:18px">' + calY + '年 ' + (calM + 1) + '月</h2>' +
     '<button class="round" id="next" aria-label="次の月"' + (isCur ? ' disabled' : '') + '><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 5 L16 12 L9 19"/></svg></button></div>' +
-    '<section class="card" style="padding:16px 12px"><div class="wk">' + WD.map(function (w) { return '<div>' + w + '</div>'; }).join('') + '</div><div class="grid">' + cells + '</div>' +
+    '<div class="wk">' + WD.map(function (w) { return '<div>' + w + '</div>'; }).join('') + '</div><div class="grid">' + cells + '</div>' +
     '<div class="legend"><span><i class="sw" style="background:var(--sage-mid)"></i>過食なし</span><span><i class="sw" style="background:var(--pink-soft)"></i>過食あり</span>' +
-    '<span><i class="sw" style="border:1px dashed var(--line)"></i>未記録</span><span><i class="sw" style="width:6px;height:6px;border-radius:50%;background:var(--lav-strong)"></i>体を動かした</span></div></section>' +
-    '<div class="row"><div class="tile" style="background:var(--sage-soft)"><div class="tiny" style="color:var(--sage-ink)">過食なし</div><div class="v num" style="color:var(--sage-ink)">' + ms.ok + '<small>日</small></div></div>' +
+    '<span><i class="sw" style="border:1px dashed var(--line)"></i>未記録</span><span><i class="sw" style="width:6px;height:6px;border-radius:50%;background:var(--lav-strong)"></i>体を動かした</span></div>' +
+    '<div class="row" style="margin-top:14px"><div class="tile" style="background:var(--sage-soft)"><div class="tiny" style="color:var(--sage-ink)">過食なし</div><div class="v num" style="color:var(--sage-ink)">' + ms.ok + '<small>日</small></div></div>' +
     '<div class="tile" style="background:var(--lav-soft)"><div class="tiny" style="color:var(--lav-ink)">記録した日</div><div class="v num" style="color:var(--lav-ink)">' + ms.rec + '<small>日</small></div></div></div>' +
-    '<p class="note" style="text-align:center">日付を押すと、その日の記録をつけたり直したりできます。</p></div>';
+    '<p class="note" style="text-align:center;margin-top:10px">日付を押すと、その日の記録をつけたり直したりできます。</p></section>';
+}
+function renderGarden() {
+  var t = today(), total = totalOk(), p = plantInfo(total);
+  var isCur = calY === t.getFullYear() && calM === t.getMonth();
+  var bar = '';
+  STAGES.forEach(function (s, i) {
+    if (i) bar += '<i class="' + (i <= p.stage ? 'on' : '') + '"></i>';
+    bar += '<span class="' + (i === p.stage ? 'now' : '') + '">' + s.n + '</span>';
+  });
+  var col = '';
+  for (var i = 0; i < p.bloomed; i++) { var f = FLOWERS[i % FLOWERS.length]; col += '<div>' + flowerIcon(f, 36) + '<span>' + esc(f.name) + '</span></div>'; }
+  for (var j = 0; j < 2; j++) {
+    col += '<div class="lock"><svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3"/></svg><span class="num">合計' + ((p.bloomed + j + 1) * PER_FLOWER) + '日</span></div>';
+  }
+  var fr = '';
+  ANIMALS.forEach(function (a) {
+    var lv = animalLevel(a, total);
+    if (lv) fr += '<button class="friend" data-a="' + a.id + '">' + animalSVG(a.id, 48) + '<span><b>' + esc(nameOf(a)) + '</b><span class="tiny">' + a.kind + '・' + animalAge(lv) + '・Lv.' + lv + '<br>名前を変える</span></span></button>';
+    else fr += '<div class="friend lock">' + animalSVG(a.id, 48, true) + '<span><b style="color:var(--muted)">' + a.kind + '</b><span class="tiny num">合計' + a.unlock + '日で庭に来ます</span></span></div>';
+  });
+  var bd = BADGES.map(function (b) {
+    var got = total >= b || S.seen.indexOf(b) >= 0;
+    return '<span class="badge num' + (got ? '' : ' lock') + '">' + (got ? '' : 'あと' + (b - total) + '日・') + '合計' + b + '日</span>';
+  }).join('');
+  main.innerHTML = '<div class="screen"><h1>こころの庭</h1>' +
+    '<section class="card" style="background:var(--sage-soft);box-shadow:none;padding:12px 12px 18px;display:flex;flex-direction:column;align-items:center">' + gardenSVG(total, p) +
+      '<div style="font-size:16px;font-weight:700;margin-top:10px">' + esc(p.flower.name) + '・' + STAGES[p.stage].n + '</div>' +
+      '<div class="tiny num" style="color:var(--sage-ink);margin-top:4px;text-align:center">' + (p.full ? '満開です。次の過食なしの日から新しい種を育てます' : 'これまで ' + p.prog + ' / ' + PER_FLOWER + '日・' + STAGES[p.stage + 1].n + 'まで あと' + p.next + '日') + '</div>' +
+      '<div class="stage-bar">' + bar + '</div><p class="tiny" style="margin:10px 0 0;text-align:center">過食なしの日に少しずつ育ちます。1輪咲くまで約3週間です</p></section>' +
+    calendarHTML() +
+    '<section><h2 style="margin-bottom:8px">庭のなかま</h2><div class="friends">' + fr + '</div></section>' +
+    '<section><h2 style="margin-bottom:8px">咲かせた花</h2><div class="collect">' + col + '</div></section>' +
+    '<section><h2 style="margin-bottom:8px">バッジ</h2><div class="badges">' + bd + '</div><p class="note" style="margin-top:8px">バッジは一度もらうと消えません。</p></section>' +
+    (S.sosCount ? '<p class="note num" style="text-align:center">SOSで衝動をやり過ごせた回数：' + S.sosCount + '回</p>' : '') +
+    '</div>';
   document.getElementById('prev').onclick = function () { calM--; if (calM < 0) { calM = 11; calY--; } render(); };
   document.getElementById('next').onclick = function () { if (isCur) return; calM++; if (calM > 11) { calM = 0; calY++; } render(); };
   main.querySelectorAll('[data-k]').forEach(function (b) { b.onclick = function () { openDay(b.dataset.k); }; });
+  main.querySelectorAll('[data-a]').forEach(function (b) { b.onclick = function () { rename(b.dataset.a); }; });
 }
 
 function openDay(k) {
@@ -396,41 +562,6 @@ function openDay(k) {
   function close() { layer.innerHTML = ''; render(); var b = main.querySelector('[data-k="' + k + '"]'); if (b) b.focus(); }
   draw();
   var f = layer.querySelector('[data-s]'); if (f) f.focus();
-}
-
-function renderGrow() {
-  var total = totalOk(), p = plantInfo(total);
-  var bar = '';
-  STAGES.forEach(function (s, i) {
-    if (i) bar += '<i class="' + (i <= p.stage ? 'on' : '') + '"></i>';
-    bar += '<span class="' + (i === p.stage ? 'now' : '') + '">' + s.n + '</span>';
-  });
-  var col = '';
-  for (var i = 0; i < p.bloomed; i++) { var f = FLOWERS[i % FLOWERS.length]; col += '<div>' + flowerIcon(f, 36) + '<span>' + esc(f.name) + '</span></div>'; }
-  for (var j = 0; j < 2; j++) {
-    col += '<div class="lock"><svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3"/></svg><span class="num">合計' + ((p.bloomed + j + 1) * PER_FLOWER) + '日</span></div>';
-  }
-  var fr = '';
-  ANIMALS.forEach(function (a) {
-    var lv = animalLevel(a, total);
-    if (lv) fr += '<button class="friend" data-a="' + a.id + '">' + animalSVG(a.id, 48) + '<span><b>' + esc(nameOf(a)) + '</b><span class="tiny">' + a.kind + '・' + animalAge(lv) + '・Lv.' + lv + '<br>名前を変える</span></span></button>';
-    else fr += '<div class="friend lock">' + animalSVG(a.id, 48, true) + '<span><b style="color:var(--muted)">' + a.kind + '</b><span class="tiny num">合計' + a.unlock + '日で仲間に</span></span></div>';
-  });
-  var bd = BADGES.map(function (b) {
-    var got = total >= b || S.seen.indexOf(b) >= 0;
-    return '<span class="badge num' + (got ? '' : ' lock') + '">' + (got ? '' : 'あと' + (b - total) + '日・') + '合計' + b + '日</span>';
-  }).join('');
-  main.innerHTML = '<div class="screen"><h1>育てる</h1>' +
-    '<section class="card" style="background:var(--sage-soft);box-shadow:none;display:flex;flex-direction:column;align-items:center">' + plantSVG(p.stage, p.flower, 150) +
-      '<div style="font-size:16px;font-weight:700;margin-top:6px">' + esc(p.flower.name) + '・' + STAGES[p.stage].n + '</div>' +
-      '<div class="tiny num" style="color:var(--sage-ink);margin-top:4px;text-align:center">' + (p.full ? '満開です。次の過食なしの日から新しい種を育てます' : '開花まで ' + p.prog + ' / ' + PER_FLOWER + '日・' + STAGES[p.stage + 1].n + 'まで あと' + p.next + '日') + '</div>' +
-      '<div class="stage-bar">' + bar + '</div><p class="tiny" style="margin:10px 0 0;text-align:center">過食なしの日に少しずつ育ちます。1輪咲くまで約3週間です</p></section>' +
-    '<section><h2 style="margin-bottom:8px">咲かせた花</h2><div class="collect">' + col + '</div></section>' +
-    '<section><h2 style="margin-bottom:8px">なかま</h2><div class="friends">' + fr + '</div></section>' +
-    '<section><h2 style="margin-bottom:8px">バッジ</h2><div class="badges">' + bd + '</div><p class="note" style="margin-top:8px">バッジは一度もらうと消えません。</p></section>' +
-    (S.sosCount ? '<p class="note num" style="text-align:center">SOSで衝動をやり過ごせた回数：' + S.sosCount + '回</p>' : '') +
-    '</div>';
-  main.querySelectorAll('[data-a]').forEach(function (b) { b.onclick = function () { rename(b.dataset.a); }; });
 }
 
 function rename(id) {
@@ -467,10 +598,6 @@ function renderSet() {
       '<label class="f" for="pasteBox">または、コピーした文字を貼り付け<textarea id="pasteBox" placeholder="{&quot;app&quot;:&quot;kokoro-niwa&quot;, ...}"></textarea></label>' +
       '<button class="btn ghost" id="pasteGo">貼り付けた内容を読み込む</button>' +
       '<div id="restoreBox"></div></section>' +
-    '<section class="card" style="display:flex;flex-direction:column;gap:12px"><h2>貯金箱</h2>' +
-      '<label class="f" for="amt">過食1回で使ってしまう金額（だいたいでOK）<input type="number" id="amt" inputmode="numeric" min="0" step="100" value="' + S.settings.amount + '"></label>' +
-      '<label class="f" for="goal">貯まったお金でしたいこと<input type="text" id="goal" maxlength="60" placeholder="例：カフェでゆっくり" value="' + esc(S.settings.goal) + '"></label>' +
-      '<p class="note">過食しなかった日の数 × この金額が、ホームの貯金箱に表示されます。</p></section>' +
     '<section class="card" style="display:flex;flex-direction:column;gap:10px"><h2>SOSの「代わりにやってみること」</h2><div class="list-edit" id="sosList">' + sos + '</div>' +
       (S.settings.sos.length < 12 ? '<button class="btn lav" id="addSos">項目を追加</button>' : '') + '</section>' +
     '<section class="card"><div class="toggle"><label for="stk">ホームに連続日数を表示する</label><input type="checkbox" id="stk"' + (S.settings.showStreak ? ' checked' : '') + '></div>' +
@@ -479,9 +606,6 @@ function renderSet() {
     '<p class="note" style="text-align:center">こころの庭は、記録を外部に送信しません。AIも使っていません。</p>' +
     '</div>';
 
-  var amt = document.getElementById('amt');
-  amt.onchange = function () { var v = parseInt(amt.value, 10); S.settings.amount = isNaN(v) || v < 0 ? 0 : v; amt.value = S.settings.amount; save(); toast('保存しました'); };
-  document.getElementById('goal').onchange = function (e) { S.settings.goal = e.target.value.trim().slice(0, 60); save(); toast('保存しました'); };
   document.getElementById('stk').onchange = function (e) { S.settings.showStreak = e.target.checked; save(); };
   var ins = document.getElementById('ins');
   if (ins) ins.onchange = function (e) { if (e.target.checked) { S.hideInstall = false; save(); toast('ホームに案内を表示します'); renderSet(); } };
@@ -644,7 +768,9 @@ function openSOS() {
 function go(t) {
   tab = t;
   if (t === 'home') msg = MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
-  if (t === 'cal') { var d = today(); calY = d.getFullYear(); calM = d.getMonth(); }
+  var d = today();
+  if (t === 'garden') { calY = d.getFullYear(); calM = d.getMonth(); }
+  if (t === 'food') { foodY = d.getFullYear(); foodM = d.getMonth(); expDel = null; }
   pendingRestore = null; confirmDelete = false;
   render(); main.scrollTop = 0;
 }

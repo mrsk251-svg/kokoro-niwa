@@ -6,6 +6,7 @@
   --pink-soft:#F6E3E1; --pink-ink:#6B3F3A;
   --lav-soft:#F3EFF8; --lav:#EFEAF7; --lav-mid:#B8A6DA; --lav-ink:#3E3360; --lav-strong:#6B5A93;
   --shadow:0 6px 20px rgba(120,110,90,.08);
+  --sky:#EEF5F2; --hill:#CFE2CC; --hill2:#DDEBD9; --cloud:#FFFFFF;
   --font:'Hiragino Maru Gothic ProN','ヒラギノ丸ゴ ProN W4','Hiragino Sans','Meiryo',sans-serif;
   color-scheme:light;
 }
@@ -15,7 +16,7 @@
   --sage-soft:#26302A; --sage:#33443A; --sage-mid:#3D5444; --sage-ink:#CFE6D2; --sage-strong:#9DBEA2;
   --pink-soft:#3D2B2A; --pink-ink:#F3CDC9;
   --lav-soft:#2D2838; --lav:#332D42; --lav-mid:#8E7BBF; --lav-ink:#DCD2F3; --lav-strong:#C3B3E6;
-  --shadow:0 6px 20px rgba(0,0,0,.3); color-scheme:dark}}
+  --shadow:0 6px 20px rgba(0,0,0,.3); --sky:#222A26; --hill:#33453A; --hill2:#2B3A31; --cloud:#3A403C; color-scheme:dark}}
 
 *,*::before,*::after{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -115,7 +116,7 @@ nav svg{width:24px;height:24px}
 
 /* 設定 */
 label.f{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
-input[type=text],input[type=number],textarea{border:1px solid var(--line);background:var(--bg);border-radius:14px;padding:12px 14px;font-size:16px;width:100%}
+input[type=text],input[type=number],input[type=date],textarea{border:1px solid var(--line);background:var(--bg);border-radius:14px;padding:12px 14px;font-size:16px;width:100%}
 input[type=file]{font-size:14px;max-width:100%}
 textarea{min-height:110px;resize:vertical}
 .btn{min-height:48px;border-radius:14px;border:none;padding:0 18px;font-weight:700;font-size:14px}
@@ -154,3 +155,34 @@ textarea{min-height:110px;resize:vertical}
 .petal{position:absolute;top:-20px;width:12px;height:12px;border-radius:12px 0;animation:fall linear forwards;z-index:1}
 @keyframes fall{to{transform:translateY(110vh) rotate(540deg)}}
 @media (prefers-reduced-motion: reduce){.petal{display:none}}
+
+/* 庭 */
+.garden{width:100%;height:auto;display:block;max-width:100%}
+.garden .bob{animation:bob 3.4s ease-in-out infinite;transform-box:fill-box}
+@keyframes bob{50%{transform:translateY(-3px)}}
+@media (prefers-reduced-motion: reduce){.garden .bob{animation:none}}
+
+/* 食費 */
+.exp-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.link{background:none;border:none;color:var(--lav-strong);font-size:13px;min-height:44px;padding:0 4px;text-decoration:underline}
+.exp-total{font-size:30px;font-weight:700;margin-top:2px}
+.exp-split{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:6px}
+.exp-split b{color:var(--ink);margin-left:6px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;flex:0 0 auto}
+.dot.food{background:var(--sage-strong)} .dot.out{background:var(--lav-mid)}
+.share{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line);margin-top:12px}
+.share i{display:block;height:100%}
+.seg{display:flex;gap:8px}
+.seg button{flex:1;min-height:52px;border-radius:14px;border:2px solid var(--line);font-weight:700;font-size:15px;background:var(--bg);color:var(--muted)}
+.seg button[aria-pressed="true"][data-c="food"]{background:var(--sage);color:var(--sage-ink);border-color:currentColor}
+.seg button[aria-pressed="true"][data-c="out"]{background:var(--lav);color:var(--lav-ink);border-color:currentColor}
+input[type=date]{-webkit-appearance:none;appearance:none;min-height:48px;display:block}
+.err{color:var(--pink-ink);font-size:13px;margin:0;min-height:1em}
+.exp-day{display:flex;flex-direction:column;gap:2px}
+.exp-day h3{font-size:13px;color:var(--muted);margin:0 0 2px;font-weight:700}
+.exp-row{display:flex;align-items:center;gap:8px;min-height:48px;border-bottom:1px solid var(--line)}
+.exp-row:last-child{border-bottom:none}
+.exp-row .amt{margin-left:auto;font-weight:700}
+.btn.small{min-height:40px;padding:0 12px;font-size:13px}
+.pet.scene{background:var(--sage-soft);padding:10px 10px 16px;gap:2px}
+.pet.scene .garden{margin-bottom:8px}

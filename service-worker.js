@@ -4,7 +4,7 @@
  *
  * アプリのファイルを更新したら、下の CACHE の番号を1つ上げてください（v1 → v2）。
  * 次にアプリを2回開いたときに新しい版に切り替わります。 */
-var CACHE = 'kokoro-niwa-app-v2';
+var CACHE = 'kokoro-niwa-app-v3';
 var ASSETS = [
   './',
   './index.html',
